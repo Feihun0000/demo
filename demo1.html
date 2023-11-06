@@ -1,0 +1,509 @@
+<template>
+    <page-container>
+        <div class="facilityContainer">
+            <div v-if="!showDetail">
+                <div class="facilityHeader">
+                    <a-form :model="formState" layout="inline" name="basic" autocomplete="off" @finish="onFinish"
+                            @finishFailed="onFinishFailed">
+                        <a-form-item name="keywords">
+                            <a-input v-model:value="formState.keywords" placeholder="名称/编号" />
+                        </a-form-item>
+                        <a-form-item :wrapper-col="{ offset: 1, span: 24 }">
+                            <a-button type="primary" html-type="submit">搜索</a-button>
+                        </a-form-item>
+                    </a-form>
+                    <div class="addBtn">
+                        <a-button type="primary" @click="addFacility">新增测站</a-button>
+                    </div>
+                </div>
+                <div class="facilityContent">
+                    <!-- <item v-for="item in facilityList" :key="item.stationId" :facility="item" :is-edit="false"
+                      @showFacilityDetail="showFacilityDetail" @deleteStation="deleteStationInfo"></item> -->
+                    <a-table :columns="columns" :row-key="record => record.id" :data-source="facilityList" :pagination="pagination"
+                             :loading="tableLoading" @change="handleTableChange">
+                        <template #whetherValid="{ record }">
+              <span>
+                {{ record.whetherValid ? '是' : '否' }}
+              </span>
+                        </template>
+                        <template #num="{ record }">
+                            <p @click="openSatellite(record)">
+                                0
+                            </p>
+                        </template>
+                        <template #motility="{ record }">
+              <span>
+                {{ record.motility == '0' ? '固定站' : '移动站' }}
+              </span>
+                        </template>
+                        <template #bodyCell="{ column, record }">
+                            <template v-if="column.dataIndex === 'action'">
+                <span>
+                  <a @click="showFacilityDetail(record)">详情</a>
+                  <a-divider type="vertical" />
+                  <a-popconfirm title="确定删除该测站吗?" ok-text="确定" cancel-text="取消" @confirm="deleteStationInfo(record)">
+                    <a>删除</a>
+                  </a-popconfirm>
+                </span>
+                            </template>
+                        </template>
+                    </a-table>
+                </div>
+                <!-- <div class="facilityFooter">
+                  <a-pagination v-model:current="current" :total="total" :default-page-size="3" show-less-items
+                    @change="changeCurrentSize" />
+                </div> -->
+            </div>
+            <div v-if="showDetail">
+                <div class="closeBtn">
+                    <!-- <close-outlined /> -->
+                    <a-button @click="closeDetail"><template #icon><rollback-outlined /></template>返回列表</a-button>
+                </div>
+                <item :is-edit="true" :facility="facilityInfo" @editStationInfo="editStationInfo"></item>
+                <a-card title="天线列表" :bordered="false">
+                    <template #extra>
+                        <a @click="addAntenna">新增天线信息</a>
+                    </template>
+                    <div>
+                        <img-item @editImgInfo="editImgInfo" @refreshImgInfo="refreshImgInfo" v-for="item in imgList" :key="item.code"
+                                  :img-info="item"></img-item>
+                    </div>
+                </a-card>
+            </div>
+        </div>
+        <a-modal v-model:visible="stationVisible" :width="1500" :title="addStationTitle" :footer="null">
+            <add-station v-model:visible="stationVisible" :title="addStationTitle" :antenna-detail-vos="imgInfo"
+                         :station-info="stationInfo" @refreshStationInfo="refreshImgInfo"></add-station></a-modal>
+
+        <a-modal v-model:visible="antennaVisible" :title="antenaTitle" :width="900" :footer="null">
+            <a-form :model="antennaFormState" name="basic" :label-col="{ span: 6 }" :wrapper-col="{ span: 16 }"
+                    autocomplete="off" @finish="addAntennaInfo">
+                <a-row>
+                    <a-col :span="12">
+                        <a-form-item label="名称" name="name" :rules="[{ required: true, message: '请填写名称!' }]">
+                            <a-input style="width: 100%" v-model:value="antennaFormState.name" placeholder="名称" />
+                        </a-form-item>
+                    </a-col>
+                    <a-col :span="12">
+                        <a-form-item label="经度" name="longitude" :rules="[{ required: true, message: '请填写经度!' }]">
+                            <a-input-number style="width: 100%" v-model:value="antennaFormState.longitude" placeholder="经度" />
+                        </a-form-item>
+                    </a-col>
+                </a-row>
+                <a-row>
+                    <a-col :span="12">
+                        <a-form-item label="纬度" name="latitude" :rules="[{ required: true, message: '请填写纬度!' }]">
+                            <a-input-number style="width: 100%" v-model:value="antennaFormState.latitude" placeholder="纬度" />
+                        </a-form-item>
+                    </a-col>
+                    <a-col :span="12">
+                        <a-form-item label="高度" name="high" :rules="[{ required: true, message: '请填写高度!' }]">
+                            <a-input-number style="width: 100%" :precision="0" v-model:value="antennaFormState.high" placeholder="高度" />
+                        </a-form-item>
+                    </a-col>
+                </a-row>
+                <a-row>
+                    <a-col :span="12">
+                        <a-form-item label="最小跟踪角" name="minTrackingAngle" :rules="[{ required: true, message: '请填写最小跟踪角!' }]">
+                            <a-input-number style="width: 100%" :precision="0" v-model:value="antennaFormState.minTrackingAngle"
+                                            placeholder="最小跟踪角" />
+                        </a-form-item>
+                    </a-col>
+                    <a-col :span="12">
+                        <a-form-item label="最小接收角" name="minAcceptanceAngle" :rules="[{ required: true, message: '请填写最小接收角!' }]">
+                            <a-input-number style="width: 100%" :precision="0" v-model:value="antennaFormState.minAcceptanceAngle"
+                                            placeholder="最小接收角" />
+                        </a-form-item>
+                    </a-col>
+                </a-row>
+                <a-row>
+                    <a-col :span="12">
+                        <a-form-item label="最大仰角" name="maxElevation" :rules="[{ required: true, message: '请填写最大仰角!' }]">
+                            <a-input-number style="width: 100%" :precision="0" v-model:value="antennaFormState.maxElevation"
+                                            placeholder="最大仰角" />
+                        </a-form-item>
+                    </a-col>
+                    <a-col :span="12">
+                        <a-form-item label="天线口径" name="caliber" :rules="[{ required: true, message: '请填写天线口径!' }]">
+                            <a-input-number style="width: 100%" v-model:value="antennaFormState.caliber" placeholder="天线口径" />
+                        </a-form-item>
+                    </a-col>
+                </a-row>
+                <a-form-item :wrapper-col="{ offset: 20, span: 16 }">
+                    <a-button @click="antennaVisible = false" style="margin-right: 10px">取消</a-button>
+                    <a-button type="primary" html-type="submit">提交</a-button>
+                </a-form-item>
+            </a-form>
+        </a-modal>
+        <!--    关联卫星弹窗-->
+        <a-modal v-model:open="satelliteOpen" title="Basic Modal" @ok="updateSatellite">
+            <a-transfer
+                    v-model:target-keys="targetKeys"
+                    v-model:selected-keys="selectedKeys"
+                    :data-source="mockData"
+                    :one-way="true"
+                    :titles="['Source', 'Target']"
+                    :render="item => item.title"
+            />
+        </a-modal>
+    </page-container>
+</template>
+
+<script setup lang="ts">
+    import { onMounted, ref, defineComponent, reactive } from "vue";
+    import Item from "@/views/facility/components/item.vue";
+    import ImgItem from "@/views/facility/components/imgItem.vue";
+    import AddStation from "@/views/facility/components/addStation.vue";
+    import { CloseOutlined } from "@ant-design/icons-vue";
+    import {
+        query_station,
+        query_station_detail,
+        add_antenna,
+        edit_antenna,
+        delete_station
+    } from "@/views/facility/api/api";
+    import { notification } from "ant-design-vue";
+
+    let formState = ref({
+        keywords: "",
+        pageNo: 1,
+        pageSize: 10
+    });
+    let showDetail = ref<boolean>(false);
+    let facilityList = ref([]);
+    let facilityInfo = ref<Object>({});
+    let stationInfo = ref<Object>({});
+    let imgList = ref([]);
+    let imgInfo = ref([]);
+    let current = ref<number>(1);
+    let total = ref<number>(14);
+    let stationVisible = ref<boolean>(false);
+    let addStationTitle = ref("");
+    let antennaFormState = ref({
+        stationId: undefined,
+        name: undefined,
+        longitude: undefined,
+        latitude: undefined,
+        high: undefined,
+        minTrackingAngle: undefined,
+        minAcceptanceAngle: undefined,
+        maxElevation: undefined,
+        caliber: undefined
+    });
+    let antennaVisible = ref(false);
+    let antenaTitle = ref("新增天线信息");
+    let satelliteOpen = ref(false);
+    const columns = [
+        {
+            title: "名称",
+            dataIndex: "name"
+        },
+        {
+            title: "编号",
+            dataIndex: "code"
+        },
+        {
+            title: "是否可用",
+            dataIndex: "whetherValid",
+            slots: { customRender: "whetherValid" }
+        },
+        {
+            title: "资源类型",
+            dataIndex: "resource"
+        },
+        {
+            title: "关联卫星数量",
+            dataIndex: "resource",
+            slots: { customRender: "num" }
+        },
+        {
+            title: "经度",
+            dataIndex: "longitude"
+        },
+        {
+            title: "纬度",
+            dataIndex: "latitude"
+        },
+        {
+            title: "高度",
+            dataIndex: "high"
+        },
+        {
+            title: "机动性",
+            dataIndex: "motility",
+            slots: { customRender: "motility" }
+        },
+        {
+            title: "操作",
+            dataIndex: "action"
+        }
+    ];
+    const pagination = ref({
+        total: 0,
+        current: formState.value.pageNo,
+        pageSize: formState.value.pageSize
+    });
+    const tableLoading = ref(false);
+    interface MockData {
+        key: string;
+        title: string;
+    };
+    const mockData: MockData[] = [];
+    for (let i = 0; i < 20; i++) {
+        mockData.push({
+            key: i.toString(),
+            title: `content${i + 1}`
+        });
+    };
+    const targetKeys = ref<string[]>([]);
+    const selectedKeys = ref<string[]>([]);
+    onMounted(() => {
+        queryStation();
+    });
+
+    function onFinish(values) {
+        queryStation();
+    }
+
+    function onFinishFailed(err) {
+        console.log("Failed:", err);
+    }
+
+    function addFacility() {
+        addStationTitle.value = "新增测站";
+        stationVisible.value = true;
+        imgInfo.value = [];
+        stationInfo.value = {
+            code: undefined,
+            externalCode: undefined,
+            name: undefined,
+            longitude: undefined,
+            latitude: undefined,
+            high: undefined,
+            radius: undefined,
+            motility: undefined,
+            type: undefined,
+            whetherAbroad: false,
+            whetherValid: true,
+            resource: [],
+            ccsdsId: null,
+            explain: undefined
+        };
+    }
+
+    function showFacilityDetail(msg) {
+        showDetail.value = true;
+        facilityInfo.value = msg;
+        queryStationDetail(msg);
+    }
+    function deleteStationInfo(msg) {
+        let params = {
+            stationId: msg.stationId
+        };
+        delete_station(params).then(res => {
+            if (res.success) {
+                notification["success"]({
+                    message: "成功",
+                    description: "地面站删除成功"
+                });
+                queryStation();
+            } else {
+                notification["error"]({
+                    message: "失败",
+                    description: res.message
+                });
+            }
+        }).catch(err => { console.log(err) })
+    }
+
+    /*查询地面站分页列表*/
+    function queryStation() {
+        query_station(formState.value)
+            .then(res => {
+                if (res.success) {
+                    facilityList.value = res.result.records;
+                    // total.value = res.result.total;
+                    pagination.value.pageSize = res.result.size;
+                    pagination.value.current = res.result.current;
+                    pagination.value.total = res.result.total;
+                } else {
+                    notification["warning"]({
+                        message: "警告",
+                        description: "地面站信息加载失败"
+                    });
+                }
+            })
+            .catch(err => {
+                console.log(err);
+            });
+    }
+    function handleTableChange(pag, filters, sorter) {
+        formState.value.pageSize = pag.pageSize;
+        formState.value.pageNo = pag.current;
+        queryStation();
+    }
+
+    //分页
+    function changeCurrentSize(page, pageSize) {
+        current.value = page;
+        queryStation();
+    }
+
+    /*查询地面站详情*/
+    function queryStationDetail(msg) {
+        let params = {
+            stationId: msg.stationId
+        };
+        query_station_detail(params)
+            .then(res => {
+                console.log(res);
+                if (res.success) {
+                    imgList.value = res.result.antennaDetailVos;
+                    imgInfo.value = res.result.antennaDetailVos;
+                    stationInfo.value = res.result;
+                    facilityInfo.value = res.result;
+                    stationInfo.value.stationId = msg.stationId;
+                } else {
+                    notification["warning"]({
+                        message: "警告",
+                        description: "地面站详情加载失败"
+                    });
+                }
+            })
+            .catch(err => {
+                console.log(err);
+            });
+    }
+
+    //关闭详情页
+    function closeDetail() {
+        showDetail.value = false;
+        stationVisible.value = false;
+    }
+
+    //编辑地面站
+    function editStationInfo(msg) {
+        addStationTitle.value = "编辑地面站";
+        stationVisible.value = true;
+        // stationInfo.value = msg
+    }
+
+    //新增天线信息
+    function addAntenna() {
+        antenaTitle.value = "新增天线信息";
+        antennaVisible.value = true;
+        antennaFormState.value = {
+            stationId: undefined,
+            name: undefined,
+            longitude: undefined,
+            latitude: undefined,
+            high: undefined,
+            minTrackingAngle: undefined,
+            minAcceptanceAngle: undefined,
+            maxElevation: undefined,
+            caliber: undefined
+        };
+    }
+
+    function addAntennaInfo(values) {
+        antennaFormState.value.stationId = facilityInfo.value.stationId;
+        if ((antenaTitle.value == "新增天线信息")) {
+            add_antenna(antennaFormState.value)
+                .then(res => {
+                    if (res.success) {
+                        antennaVisible.value = false;
+                        notification["success"]({
+                            message: "成功",
+                            description: "新增天线信息成功"
+                        });
+                        queryStationDetail({ stationId: facilityInfo.value.stationId });
+                    }
+                })
+                .catch(err => {
+                    console.log(err);
+                });
+        } else {
+            edit_antenna(antennaFormState.value)
+                .then(res => {
+                    if (res.success) {
+                        antennaVisible.value = false;
+                        notification["success"]({
+                            message: "成功",
+                            description: "编辑天线信息成功"
+                        });
+                        queryStationDetail({ stationId: facilityInfo.value.stationId });
+                    } else {
+                        notification["error"]({
+                            message: "失败",
+                            description: res.message
+                        });
+                    }
+                })
+                .catch(err => {
+                    notification["error"]({
+                        message: "失败",
+                        description: err.message
+                    });
+                });
+        }
+    }
+
+    //编辑天线信息
+    function editImgInfo(mes) {
+        antennaFormState.value = mes;
+        antenaTitle.value = "编辑天线信息";
+        antennaVisible.value = true;
+    }
+
+    //刷新详情页
+    function refreshImgInfo() {
+        queryStationDetail({ stationId: facilityInfo.value.stationId });
+    }
+    // 打开关联卫星弹窗
+    function openSatellite(e:any){
+        satelliteOpen.value = true;
+        console.log(e)
+    }
+    //关联卫星弹窗确认
+    function updateSatellite(){
+        console.log("你好,啊哈")
+        satelliteOpen.value= false
+    }
+</script>
+<style scoped>
+    .facilityContainer {
+        /* margin: 15px; */
+        height: calc(100% - 150px);
+        background-color: #fff;
+    }
+
+    .facilityHeader {
+        padding: 20px 40px;
+        display: flex;
+    }
+
+    .addBtn {
+        margin-right: 20px;
+        flex: 1;
+        text-align: right;
+    }
+
+    .facilityContent {
+        padding: 0px 40px;
+    }
+
+    .facilityFooter {
+        text-align: center;
+        padding: 5px 0px;
+    }
+
+    :deep(.ant-pro-page-container-children-content) {
+        margin: 15px !important;
+    }
+
+    .closeBtn {
+        text-align: right;
+        padding: 10px;
+        cursor: pointer;
+    }
+</style>
